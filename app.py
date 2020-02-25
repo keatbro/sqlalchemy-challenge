@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
@@ -7,11 +8,8 @@ from sqlalchemy import create_engine, func
 
 from flask import Flask, jsonify
 
-
-#################################################
-# Database Setup
-#################################################
-engine = create_engine("sqlite:///hawaii.sqlite")
+# Database setup
+engine = create_engine("sqlite:///Resources/hawaii.sqlite")
 
 # reflect an existing database into a new model
 Base = automap_base()
@@ -19,18 +17,11 @@ Base = automap_base()
 Base.prepare(engine, reflect=True)
 
 # Save reference to the table
-measurements = Base.classes.measurements
+measurements = Base.classes.measurement
+stations = Base.classes.station
 
-
-#################################################
-# Flask Setup
-#################################################
+# Flask setup
 app = Flask(__name__)
-
-
-#################################################
-# Flask Routes
-#################################################
 
 @app.route("/")
 def welcome():
@@ -38,19 +29,21 @@ def welcome():
     return (
         f"Available Routes:<br/>"
         f"/api/v1.0/precipitation<br/>"
-        f"/api/v1.0/stations"
-        f"/api/v1.0/tobs"
-
+        f"/api/v1.0/stations<br/>"
+        f"/api/v1.0/tobs<br/>"
+        f"/api/v1.0/<start><br/>"
+        f"/api/v1.0/<start>/<end><br/>"
     )
 
 @app.route("/api/v1.0/precipitation")
 def precipitation():
+    f"Return a JSON object of all precipitation measurements and dates."
     # Create our session (link) from Python to the DB
     session = Session(engine)
 
     """Return a list of all passenger names"""
     # Query all precipitation
-    results = session.query(measurement.date, measurement.prcp).all()
+    results = session.query(measurements.date, measurements.prcp).all()
     
     precipitation = []
     for date, prcp in results:
@@ -66,13 +59,14 @@ def precipitation():
     return jsonify(data)
 
 @app.route("/api/v1.0/stations")
-def stations():
+def stationsFunc():
+    f"Returns a JSON object of all stations."
     # Create our session (link) from Python to the DB
     session = Session(engine)
 
     """Return a list of all passenger names"""
     # Query all stations
-    results = session.query(station.station).all()
+    results = session.query(stations.station, stations.name).all()
 
     # Convert list of tuples into normal list
     data = list(np.ravel(results))
@@ -80,42 +74,34 @@ def stations():
     return jsonify(data)
 
 @app.route("/api/v1.0/tobs")
-def stations():
-    # Create our session (link) from Python to the DB
-    session = Session(engine)
+def tobsFunc():
+    f"Returns the last year of measurement data."
 
-    """Return a list of all passenger names"""
-    # Query all stations
-    results = session.query(station.station).all()
+    # Trying out Pandas instead because it's much more straightforward.
+    df = pd.read_sql('select date, tobs from measurement where date between "2016-08-23" and "2017-08-23" group by 1 order by date desc', engine)
 
-    # Convert list of tuples into normal list
-    data = list(np.ravel(results))
+    # Use to_json function to return dataframe as JSON object.
+    return df.to_json(orient='table')
 
-    return jsonify(data)
+@app.route("/api/v1.0/<start_date>")
+def startFunc(start_date):
+    f"Returns the average, max and min temperature for all dates greater than a specified date."
+    
+    # Trying out Pandas instead because it's much more straightforward.
+    df = pd.read_sql(f"select avg(tobs), max(tobs), min(tobs) from measurement where date >= '{start_date}'", engine)
 
+    # Use to_json function to return dataframe as JSON object.
+    return df.to_json()
 
-@app.route("/api/v1.0/passengers")
-def passengers():
-    # Create our session (link) from Python to the DB
-    session = Session(engine)
+@app.route("/api/v1.0/<start_date>/<end_date>")
+def startEndFunc(start_date, end_date):
+    f"Returns the average, max and min temperature for a specified date."
+    
+    # Trying out Pandas instead because it's much more straightforward.
+    df = pd.read_sql(f"select avg(tobs), max(tobs), min(tobs) from measurement where date <= '{start_date}' and date <= '{end_date}'", engine)
 
-    """Return a list of passenger data including the name, age, and sex of each passenger"""
-    # Query all passengers
-    results = session.query(Passenger.name, Passenger.age, Passenger.sex).all()
-
-    session.close()
-
-    # Create a dictionary from the row data and append to a list of all_passengers
-    all_passengers = []
-    for name, age, sex in results:
-        passenger_dict = {}
-        passenger_dict["name"] = name
-        passenger_dict["age"] = age
-        passenger_dict["sex"] = sex
-        all_passengers.append(passenger_dict)
-
-    return jsonify(all_passengers)
-
+    # Use to_json function to return dataframe as JSON object.
+    return df.to_json()
 
 if __name__ == '__main__':
     app.run(debug=True)
